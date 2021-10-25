@@ -1,0 +1,7 @@
+setup.py
+inuits_jwt_auth/authorization.py
+inuits_jwt_auth.egg-info/PKG-INFO
+inuits_jwt_auth.egg-info/SOURCES.txt
+inuits_jwt_auth.egg-info/dependency_links.txt
+inuits_jwt_auth.egg-info/requires.txt
+inuits_jwt_auth.egg-info/top_level.txt

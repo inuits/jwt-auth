@@ -1,0 +1,2 @@
+requests>=2.25.0
+Authlib~=1.0.0b1
