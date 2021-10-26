@@ -1,13 +1,19 @@
 import base64
+import functools
 import json
+
 from abc import ABC
 import requests
-from authlib.oauth2.rfc6750 import BearerTokenValidator
+from flask import request as _req
+from authlib.oauth2 import HttpRequest, OAuth2Error
+from authlib.oauth2.rfc6750 import BearerTokenValidator, InvalidTokenError
 from authlib.oauth2.rfc7523 import JWTBearerToken
 from authlib.jose import jwt, JoseError
-from authlib.integrations.flask_oauth2 import ResourceProtector
+from authlib.integrations.flask_oauth2 import ResourceProtector, token_authenticated
 from authlib.oauth2.rfc6749 import MissingAuthorizationError, UnsupportedTokenTypeError
 from authlib.integrations.flask_oauth2 import current_token as current_token_authlib
+from contextlib import contextmanager
+from flask import _app_ctx_stack
 
 
 class MyResourceProtector(ResourceProtector):
@@ -42,10 +48,83 @@ class MyResourceProtector(ResourceProtector):
         validator = self.get_token_validator(token_type)
         return validator, token_string
 
+    def acquire_token(self, permissions=None):
+        """A method to acquire current valid token with the given scope.
+
+        :param permissions: a list of required permissions
+        :return: token object
+        """
+        request = HttpRequest(
+            _req.method,
+            _req.full_path,
+            _req.data,
+            _req.headers
+        )
+        request.req = _req
+        # backward compatible
+        if isinstance(permissions, str):
+            permissions = [permissions]
+        token = self.validate_request(permissions, request)
+        token_authenticated.send(self, token=token)
+        ctx = _app_ctx_stack.top
+        ctx.authlib_server_oauth2_token = token
+        return token
+
+    @contextmanager
+    def acquire(self, permissions=None):
+        try:
+            yield self.acquire_token(permissions)
+        except OAuth2Error as error:
+            self.raise_error_response(error)
+
+    def __call__(self, permissions=None, optional=False):
+        def wrapper(f):
+            @functools.wraps(f)
+            def decorated(*args, **kwargs):
+                try:
+                    self.acquire_token(permissions)
+                except MissingAuthorizationError as error:
+                    if optional:
+                        return f(*args, **kwargs)
+                    self.raise_error_response(error)
+                except OAuth2Error as error:
+                    self.raise_error_response(error)
+                return f(*args, **kwargs)
+
+            return decorated
+
+        return wrapper
+
+    def validate_request(self, permissions, request):
+        """Validate the request and return a token."""
+        validator, token_string = self.parse_request_authorization(request)
+        validator.validate_request(request)
+        token = validator.authenticate_token(token_string)
+        validator.validate_token(token, permissions, request)
+        return token
+
+
+def _get_permissions_by_roles(roles):
+    # todo read role-permission mapping from file
+    return []
+
+
+class JWT(JWTBearerToken):
+    def has_permissions(self, permissions):
+        if "roles" in self and permissions is not None:
+            user_permissions = _get_permissions_by_roles(self["roles"])
+            for permission in permissions:
+                if permission not in user_permissions:
+                    return False
+        elif "roles" not in self and permissions is not None:
+            return False
+
+        return True
+
 
 class JWTValidator(BearerTokenValidator, ABC):
     TOKEN_TYPE = 'bearer'
-    token_cls = JWTBearerToken
+    token_cls = JWT
 
     def __init__(self, logger, static_jwt=False, static_issuer=False, static_public_key=False, realms=None,
                  **extra_attributes):
@@ -94,6 +173,17 @@ class JWTValidator(BearerTokenValidator, ABC):
                 return requests.get(realm).json()
         return {}
 
+    def validate_token(self, token, permissions, request):
+        """Check if token is active and matches the requested permissions."""
+        if not token:
+            raise InvalidTokenError(realm=self.realm, extra_attributes=self.extra_attributes)
+        if token.is_expired():
+            raise InvalidTokenError(realm=self.realm, extra_attributes=self.extra_attributes)
+        if token.is_revoked():
+            raise InvalidTokenError(realm=self.realm, extra_attributes=self.extra_attributes)
+        if not token.has_permissions(permissions):
+            raise InsufficientPermissionError()
+
     @staticmethod
     def _get_unverified_issuer(token_string):
         payload = token_string.split(".")[1] + "=="  # "==" needed for correct b64 padding
@@ -102,6 +192,20 @@ class JWTValidator(BearerTokenValidator, ABC):
             return decoded["iss"]
         else:
             return False
+
+
+class InsufficientPermissionError(OAuth2Error):
+    """The request requires higher privileges than provided by the
+    access token. The resource server SHOULD respond with the HTTP
+    403 (Forbidden) status code and MAY include the "scope"
+    attribute with the scope necessary to access the protected
+    resource.
+
+    https://tools.ietf.org/html/rfc6750#section-3.1
+    """
+    error = 'insufficient_permission'
+    description = 'The request requires higher privileges than provided by the access token.'
+    status_code = 403
 
 
 current_token = current_token_authlib

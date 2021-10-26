@@ -2,8 +2,8 @@ from distutils.core import setup
 
 setup(
     name='inuits_jwt_auth',
-    version='0.0.5',
-    description="Job helper to use with the job api",
+    version='0.0.6',
+    description="A Wrapper for authlib library with roles and permissions",
     classifiers=[
         'License :: OSI Approved :: GNU General Public License v2 (GPLv2)',
         'Intended Audience :: Developers',
@@ -17,7 +17,8 @@ setup(
     ],
     install_requires=[
         "requests>=2.25.0",
-        "Authlib~=1.0.0b1"
+        "Authlib~=1.0.0b1",
+        "Flask>=1.1.2"
     ],
     provides=['inuits_jwt_auth']
 )
