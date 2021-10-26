@@ -7,6 +7,7 @@ from authlib.oauth2.rfc7523 import JWTBearerToken
 from authlib.jose import jwt, JoseError
 from authlib.integrations.flask_oauth2 import ResourceProtector
 from authlib.oauth2.rfc6749 import MissingAuthorizationError, UnsupportedTokenTypeError
+from authlib.integrations.flask_oauth2 import current_token as current_token_authlib
 
 
 class MyResourceProtector(ResourceProtector):
@@ -46,7 +47,8 @@ class JWTValidator(BearerTokenValidator, ABC):
     TOKEN_TYPE = 'bearer'
     token_cls = JWTBearerToken
 
-    def __init__(self, logger, static_jwt=False, static_issuer=False, static_public_key=False, realms=None, **extra_attributes):
+    def __init__(self, logger, static_jwt=False, static_issuer=False, static_public_key=False, realms=None,
+                 **extra_attributes):
         super().__init__(**extra_attributes)
         self.static_jwt = static_jwt
         self.static_issuer = static_issuer
@@ -100,3 +102,6 @@ class JWTValidator(BearerTokenValidator, ABC):
             return decoded["iss"]
         else:
             return False
+
+
+current_token = current_token_authlib

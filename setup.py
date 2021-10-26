@@ -2,7 +2,7 @@ from distutils.core import setup
 
 setup(
     name='inuits_jwt_auth',
-    version='0.0.4',
+    version='0.0.5',
     description="Job helper to use with the job api",
     classifiers=[
         'License :: OSI Approved :: GNU General Public License v2 (GPLv2)',
