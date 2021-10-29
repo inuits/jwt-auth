@@ -1,6 +1,7 @@
 import base64
 import functools
 import json
+import sys
 
 from abc import ABC
 import requests
@@ -17,10 +18,11 @@ from flask import _app_ctx_stack
 
 
 class MyResourceProtector(ResourceProtector):
-    def __init__(self, static_jwt, role_permission_mapping: dict):
+    def __init__(self, static_jwt, role_permission_mapping: dict, require_token=True):
         super().__init__()
         self.static_jwt = static_jwt
         self.role_permission_mapping = role_permission_mapping
+        self.require_token = require_token
 
     def parse_request_authorization(self, request):
         """Parse the token and token validator from request Authorization header.
@@ -36,8 +38,10 @@ class MyResourceProtector(ResourceProtector):
         :raise: UnsupportedTokenTypeError
         """
         auth = request.headers.get('Authorization')
-        if not auth:
+        if not auth and self.require_token:
             raise MissingAuthorizationError(self._default_auth_type, self._default_realm)
+        elif not auth:
+            auth = "Bearer " + self.static_jwt
         # https://tools.ietf.org/html/rfc6749#section-7.1
         token_parts = auth.split(None, 1)
         if len(token_parts) != 2:
@@ -126,7 +130,7 @@ class JWTValidator(BearerTokenValidator, ABC):
     token_cls = JWT
 
     def __init__(self, logger, static_jwt=False, static_issuer=False, static_public_key=False, realms=None
-                 ,require_token=True, **extra_attributes):
+                 , require_token=True, **extra_attributes):
         super().__init__(**extra_attributes)
         self.static_jwt = static_jwt
         self.static_issuer = static_issuer
@@ -143,10 +147,10 @@ class JWTValidator(BearerTokenValidator, ABC):
         self.require_token = require_token
 
     def authenticate_token(self, token_string):
-        if self.require_token is False and self.static_jwt is not False:
+        if not self.require_token and self.static_jwt is not False:
             token_string = self.static_jwt
-        elif self.static_jwt is not False and token_string != self.static_jwt:
-            token_string = ""
+        elif self.require_token is True and self.static_jwt is not False and token_string != self.static_jwt:
+            return None
 
         issuer = self._get_unverified_issuer(token_string)
         if not issuer:
@@ -189,7 +193,10 @@ class JWTValidator(BearerTokenValidator, ABC):
 
     @staticmethod
     def _get_unverified_issuer(token_string):
-        payload = token_string.split(".")[1] + "=="  # "==" needed for correct b64 padding
+        try:
+            payload = token_string.split(".")[1] + "=="  # "==" needed for correct b64 padding
+        except:
+            return False
         decoded = json.loads(base64.b64decode(payload.encode('utf-8')))
         if "iss" in decoded:
             return decoded["iss"]
