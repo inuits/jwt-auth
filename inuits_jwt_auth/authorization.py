@@ -17,9 +17,10 @@ from flask import _app_ctx_stack
 
 
 class MyResourceProtector(ResourceProtector):
-    def __init__(self, static_jwt):
+    def __init__(self, static_jwt, role_permission_mapping: dict):
         super().__init__()
         self.static_jwt = static_jwt
+        self.role_permission_mapping = role_permission_mapping
 
     def parse_request_authorization(self, request):
         """Parse the token and token validator from request Authorization header.
@@ -35,9 +36,7 @@ class MyResourceProtector(ResourceProtector):
         :raise: UnsupportedTokenTypeError
         """
         auth = request.headers.get('Authorization')
-        if not auth and (self.static_jwt is not False):
-            auth = "Bearer " + self.static_jwt
-        elif not auth:
+        if not auth:
             raise MissingAuthorizationError(self._default_auth_type, self._default_realm)
         # https://tools.ietf.org/html/rfc6749#section-7.1
         token_parts = auth.split(None, 1)
@@ -126,8 +125,8 @@ class JWTValidator(BearerTokenValidator, ABC):
     TOKEN_TYPE = 'bearer'
     token_cls = JWT
 
-    def __init__(self, logger, static_jwt=False, static_issuer=False, static_public_key=False, realms=None,
-                 **extra_attributes):
+    def __init__(self, logger, static_jwt=False, static_issuer=False, static_public_key=False, realms=None
+                 , disable_auth=False, **extra_attributes):
         super().__init__(**extra_attributes)
         self.static_jwt = static_jwt
         self.static_issuer = static_issuer
@@ -141,10 +140,14 @@ class JWTValidator(BearerTokenValidator, ABC):
             'sub': {'essential': True},
         }
         self.claims_options = claims_options
+        self.disable_auth = disable_auth
 
     def authenticate_token(self, token_string):
-        if self.static_jwt is not False:
+        if self.disable_auth and self.static_jwt is not False:
             token_string = self.static_jwt
+        elif self.static_jwt is not False and token_string != self.static_jwt:
+            token_string = ""
+
         issuer = self._get_unverified_issuer(token_string)
         if not issuer:
             return None
