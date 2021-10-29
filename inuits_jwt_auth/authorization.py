@@ -126,7 +126,7 @@ class JWTValidator(BearerTokenValidator, ABC):
     token_cls = JWT
 
     def __init__(self, logger, static_jwt=False, static_issuer=False, static_public_key=False, realms=None
-                 , disable_auth=False, **extra_attributes):
+                 ,require_token=True, **extra_attributes):
         super().__init__(**extra_attributes)
         self.static_jwt = static_jwt
         self.static_issuer = static_issuer
@@ -140,10 +140,10 @@ class JWTValidator(BearerTokenValidator, ABC):
             'sub': {'essential': True},
         }
         self.claims_options = claims_options
-        self.disable_auth = disable_auth
+        self.require_token = require_token
 
     def authenticate_token(self, token_string):
-        if self.disable_auth and self.static_jwt is not False:
+        if self.require_token is False and self.static_jwt is not False:
             token_string = self.static_jwt
         elif self.static_jwt is not False and token_string != self.static_jwt:
             token_string = ""
