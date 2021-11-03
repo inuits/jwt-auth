@@ -40,7 +40,7 @@ class MyResourceProtector(ResourceProtector):
         auth = request.headers.get('Authorization')
         if not auth and self.require_token:
             raise MissingAuthorizationError(self._default_auth_type, self._default_realm)
-        elif not auth:
+        elif not auth or (auth and not self.require_token):
             auth = "Bearer " + self.static_jwt
         # https://tools.ietf.org/html/rfc6749#section-7.1
         token_parts = auth.split(None, 1)
