@@ -18,10 +18,9 @@ from flask import _app_ctx_stack
 
 
 class MyResourceProtector(ResourceProtector):
-    def __init__(self, static_jwt, role_permission_mapping: dict, require_token=True):
+    def __init__(self, static_jwt, require_token=True):
         super().__init__()
         self.static_jwt = static_jwt
-        self.role_permission_mapping = role_permission_mapping
         self.require_token = require_token
 
     def parse_request_authorization(self, request):
@@ -38,6 +37,7 @@ class MyResourceProtector(ResourceProtector):
         :raise: UnsupportedTokenTypeError
         """
         auth = request.headers.get('Authorization')
+        print(auth, file=sys.stderr)
         if not auth and self.require_token:
             raise MissingAuthorizationError(self._default_auth_type, self._default_realm)
         elif not auth or (auth and not self.require_token):
@@ -107,22 +107,26 @@ class MyResourceProtector(ResourceProtector):
         return token
 
 
-def _get_permissions_by_roles(roles):
-    # todo read role-permission mapping from file
-    return []
-
-
 class JWT(JWTBearerToken):
-    def has_permissions(self, permissions):
-        if "roles" in self and permissions is not None:
-            user_permissions = _get_permissions_by_roles(self["roles"])
-            for permission in permissions:
-                if permission not in user_permissions:
-                    return False
-        elif "roles" not in self and permissions is not None:
-            return False
-
-        return True
+    def has_permissions(self, permissions, role_permission_mapping=None):
+        if role_permission_mapping is None:
+            role_permission_mapping = []
+        if permissions is not None and "aud" in self and "resource_access" in self and self["aud"] in self["resource_access"]:
+            resource_access = self["resource_access"][self["aud"]]
+            if "roles" in resource_access and permissions is not None:
+                user_permissions = []
+                for role in resource_access["roles"]:
+                    if role in role_permission_mapping:
+                        for permission in role_permission_mapping[role]:
+                            user_permissions.append(permission)
+                for permission in permissions:
+                    if permission in user_permissions:
+                        return True
+            elif "roles" not in resource_access and permissions is not None:
+                return False
+        elif permissions is None:
+            return True
+        return False
 
 
 class JWTValidator(BearerTokenValidator, ABC):
@@ -130,7 +134,7 @@ class JWTValidator(BearerTokenValidator, ABC):
     token_cls = JWT
 
     def __init__(self, logger, static_jwt=False, static_issuer=False, static_public_key=False, realms=None
-                 , require_token=True, **extra_attributes):
+                 , require_token=True, role_permission_mapping=None, **extra_attributes):
         super().__init__(**extra_attributes)
         self.static_jwt = static_jwt
         self.static_issuer = static_issuer
@@ -138,6 +142,7 @@ class JWTValidator(BearerTokenValidator, ABC):
         self.logger = logger
         self.public_key = None
         self.realms = [] if realms is None else realms
+        self.role_permission_mapping = {} if role_permission_mapping is None else role_permission_mapping
         claims_options = {
             'exp': {'essential': True},
             'aud': {'essential': True},
@@ -157,7 +162,7 @@ class JWTValidator(BearerTokenValidator, ABC):
             return None
         realm_config = self._get_realm_config_by_issuer(issuer)
         if "public_key" in realm_config:
-            self.public_key = realm_config["public_key"]
+            self.public_key = "-----BEGIN PUBLIC KEY-----\n" + realm_config["public_key"] + "\n-----END PUBLIC KEY-----"
         else:
             self.public_key = ""
         try:
@@ -175,9 +180,8 @@ class JWTValidator(BearerTokenValidator, ABC):
     def _get_realm_config_by_issuer(self, issuer):
         if issuer == self.static_issuer:
             return {"public_key": self.static_public_key}
-        for realm in self.realms:
-            if issuer == realm:
-                return requests.get(realm).json()
+        if issuer in self.realms:
+            return requests.get(issuer).json()
         return {}
 
     def validate_token(self, token, permissions, request):
@@ -188,7 +192,7 @@ class JWTValidator(BearerTokenValidator, ABC):
             raise InvalidTokenError(realm=self.realm, extra_attributes=self.extra_attributes)
         if token.is_revoked():
             raise InvalidTokenError(realm=self.realm, extra_attributes=self.extra_attributes)
-        if not token.has_permissions(permissions):
+        if not token.has_permissions(permissions, self.role_permission_mapping):
             raise InsufficientPermissionError()
 
     @staticmethod
