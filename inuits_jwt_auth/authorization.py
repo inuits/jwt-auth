@@ -20,13 +20,11 @@ from flask import _app_ctx_stack
 from werkzeug.exceptions import Unauthorized, Forbidden
 
 
-
 class MyResourceProtector(ResourceProtector):
     def __init__(self, static_jwt, require_token=True):
         super().__init__()
         self.static_jwt = static_jwt
         self.require_token = require_token
-
     def parse_request_authorization(self, request):
         """Parse the token and token validator from request Authorization header.
         Here is an example of Authorization header::
@@ -114,14 +112,17 @@ class MyResourceProtector(ResourceProtector):
 
 
 class JWT(JWTBearerToken):
-    def has_permissions(self, permissions, role_permission_mapping=None):
+    def has_permissions(self, permissions, role_permission_mapping=None, super_admin_role="role_super_admin"):
         if role_permission_mapping is None:
             role_permission_mapping = []
-        if permissions is not None and "azp" in self and "resource_access" in self and self["azp"] in self["resource_access"]:
+        if permissions is not None and "azp" in self and "resource_access" in self and self["azp"] in \
+                self["resource_access"]:
             resource_access = self["resource_access"][self["azp"]]
             if "roles" in resource_access and permissions is not None:
                 user_permissions = []
                 for role in resource_access["roles"]:
+                    if role == super_admin_role:
+                        return True
                     if role in role_permission_mapping:
                         for permission in role_permission_mapping[role]:
                             user_permissions.append(permission)
@@ -140,7 +141,8 @@ class JWTValidator(BearerTokenValidator, ABC):
     token_cls = JWT
 
     def __init__(self, logger, static_jwt=False, static_issuer=False, static_public_key=False, realms=None
-                 , require_token=True, role_permission_file_location=False, **extra_attributes):
+                 , require_token=True, role_permission_file_location=False, super_admin_role="role_super_admin",
+                 **extra_attributes):
         super().__init__(**extra_attributes)
         self.static_jwt = static_jwt
         self.static_issuer = static_issuer
@@ -156,6 +158,7 @@ class JWTValidator(BearerTokenValidator, ABC):
         self.claims_options = claims_options
         self.require_token = require_token
         self.role_permission_mapping = None
+        self.super_admin_role = super_admin_role
         if role_permission_file_location:
             try:
                 role_permission_file = open(role_permission_file_location)
@@ -206,7 +209,7 @@ class JWTValidator(BearerTokenValidator, ABC):
             raise InvalidTokenError(realm=self.realm, extra_attributes=self.extra_attributes)
         if token.is_revoked():
             raise InvalidTokenError(realm=self.realm, extra_attributes=self.extra_attributes)
-        if not token.has_permissions(permissions, self.role_permission_mapping):
+        if not token.has_permissions(permissions, self.role_permission_mapping, self.super_admin_role):
             raise InsufficientPermissionError()
 
     @staticmethod
