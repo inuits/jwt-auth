@@ -17,6 +17,8 @@ from authlib.oauth2.rfc6749 import MissingAuthorizationError, UnsupportedTokenTy
 from authlib.integrations.flask_oauth2 import current_token as current_token_authlib
 from contextlib import contextmanager
 from flask import _app_ctx_stack
+from werkzeug.exceptions import Unauthorized, Forbidden
+
 
 
 class MyResourceProtector(ResourceProtector):
@@ -91,9 +93,11 @@ class MyResourceProtector(ResourceProtector):
                 except MissingAuthorizationError as error:
                     if optional:
                         return f(*args, **kwargs)
-                    self.raise_error_response(error)
+                    raise Unauthorized(str(error))
+                except InsufficientPermissionError as error:
+                    raise Forbidden(str(error))
                 except OAuth2Error as error:
-                    self.raise_error_response(error)
+                    raise Unauthorized(str(error))
                 return f(*args, **kwargs)
 
             return decorated
