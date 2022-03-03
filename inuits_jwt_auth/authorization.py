@@ -4,6 +4,8 @@ import json
 import sys
 
 from abc import ABC
+from json import JSONDecodeError
+
 import requests
 from flask import request as _req
 from authlib.oauth2 import HttpRequest, OAuth2Error
@@ -111,8 +113,8 @@ class JWT(JWTBearerToken):
     def has_permissions(self, permissions, role_permission_mapping=None):
         if role_permission_mapping is None:
             role_permission_mapping = []
-        if permissions is not None and "aud" in self and "resource_access" in self and self["aud"] in self["resource_access"]:
-            resource_access = self["resource_access"][self["aud"]]
+        if permissions is not None and "azp" in self and "resource_access" in self and self["azp"] in self["resource_access"]:
+            resource_access = self["resource_access"][self["azp"]]
             if "roles" in resource_access and permissions is not None:
                 user_permissions = []
                 for role in resource_access["roles"]:
@@ -134,7 +136,7 @@ class JWTValidator(BearerTokenValidator, ABC):
     token_cls = JWT
 
     def __init__(self, logger, static_jwt=False, static_issuer=False, static_public_key=False, realms=None
-                 , require_token=True, role_permission_mapping=None, **extra_attributes):
+                 , require_token=True, role_permission_file_location=False, **extra_attributes):
         super().__init__(**extra_attributes)
         self.static_jwt = static_jwt
         self.static_issuer = static_issuer
@@ -142,14 +144,22 @@ class JWTValidator(BearerTokenValidator, ABC):
         self.logger = logger
         self.public_key = None
         self.realms = [] if realms is None else realms
-        self.role_permission_mapping = {} if role_permission_mapping is None else role_permission_mapping
         claims_options = {
             'exp': {'essential': True},
-            'aud': {'essential': True},
+            'azp': {'essential': True},
             'sub': {'essential': True},
         }
         self.claims_options = claims_options
         self.require_token = require_token
+        self.role_permission_mapping = None
+        if role_permission_file_location:
+            try:
+                role_permission_file = open(role_permission_file_location)
+                self.role_permission_mapping = json.load(role_permission_file)
+            except IOError:
+                logger.error("Could not read role_permission file: {}".format(role_permission_file_location))
+            except JSONDecodeError:
+                logger.error("Invalid json in role_permission file: {}".format(role_permission_file_location))
 
     def authenticate_token(self, token_string):
         if not self.require_token and self.static_jwt is not False:
