@@ -25,6 +25,7 @@ class MyResourceProtector(ResourceProtector):
         super().__init__()
         self.static_jwt = static_jwt
         self.require_token = require_token
+
     def parse_request_authorization(self, request):
         """Parse the token and token validator from request Authorization header.
         Here is an example of Authorization header::
@@ -142,7 +143,7 @@ class JWTValidator(BearerTokenValidator, ABC):
 
     def __init__(self, logger, static_jwt=False, static_issuer=False, static_public_key=False, realms=None
                  , require_token=True, role_permission_file_location=False, super_admin_role="role_super_admin",
-                 **extra_attributes):
+                 remote_token_validation=False, **extra_attributes):
         super().__init__(**extra_attributes)
         self.static_jwt = static_jwt
         self.static_issuer = static_issuer
@@ -159,6 +160,7 @@ class JWTValidator(BearerTokenValidator, ABC):
         self.require_token = require_token
         self.role_permission_mapping = None
         self.super_admin_role = super_admin_role
+        self.remote_token_validation = remote_token_validation
         if role_permission_file_location:
             try:
                 role_permission_file = open(role_permission_file_location)
@@ -189,6 +191,16 @@ class JWTValidator(BearerTokenValidator, ABC):
                 claims_cls=self.token_cls,
             )
             claims.validate()
+            if self.remote_token_validation:
+                try:
+                    result = requests.get("{}/protocol/openid-connect/userinfo".format(issuer),
+                                          headers={"Authorization": "Bearer {}".format(token_string)})
+                    if result.status_code != 200:
+                        self.logger.info('Authenticate token failed. %r', result.content)
+                        return None
+                except Exception as error:
+                    self.logger.info('Authenticate token failed. %r', error)
+                    return None
             return claims
         except JoseError as error:
             self.logger.info('Authenticate token failed. %r', error)
