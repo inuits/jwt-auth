@@ -40,7 +40,6 @@ class MyResourceProtector(ResourceProtector):
         :raise: UnsupportedTokenTypeError
         """
         auth = request.headers.get('Authorization')
-        print(auth, file=sys.stderr)
         if not auth and self.require_token:
             raise MissingAuthorizationError(self._default_auth_type, self._default_realm)
         elif not auth or (auth and not self.require_token):
