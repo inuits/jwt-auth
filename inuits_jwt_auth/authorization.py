@@ -1,7 +1,6 @@
 import base64
 import functools
 import json
-import sys
 
 from abc import ABC
 from json import JSONDecodeError
@@ -21,37 +20,9 @@ from werkzeug.exceptions import Unauthorized, Forbidden
 
 
 class MyResourceProtector(ResourceProtector):
-    def __init__(self, static_jwt, require_token=True):
+    def __init__(self, require_token=True):
         super().__init__()
-        self.static_jwt = static_jwt
         self.require_token = require_token
-
-    def parse_request_authorization(self, request):
-        """Parse the token and token validator from request Authorization header.
-        Here is an example of Authorization header::
-
-            Authorization: Bearer a-token-string
-
-        This method will parse this header, if it can find the validator for
-        ``Bearer``, it will return the validator and ``a-token-string``.
-
-        :return: validator, token_string
-        :raise: MissingAuthorizationError
-        :raise: UnsupportedTokenTypeError
-        """
-        auth = request.headers.get('Authorization')
-        if not auth and self.require_token:
-            raise MissingAuthorizationError(self._default_auth_type, self._default_realm)
-        elif not auth or (auth and not self.require_token):
-            auth = "Bearer " + self.static_jwt
-        # https://tools.ietf.org/html/rfc6749#section-7.1
-        token_parts = auth.split(None, 1)
-        if len(token_parts) != 2:
-            raise UnsupportedTokenTypeError(self._default_auth_type, self._default_realm)
-
-        token_type, token_string = token_parts
-        validator = self.get_token_validator(token_type)
-        return validator, token_string
 
     def acquire_token(self, permissions=None):
         """A method to acquire current valid token with the given scope.
@@ -69,7 +40,10 @@ class MyResourceProtector(ResourceProtector):
         # backward compatible
         if isinstance(permissions, str):
             permissions = [permissions]
-        token = self.validate_request(permissions, request)
+        if self.require_token:
+            token = self.validate_request(permissions, request)
+        else:
+            token = ""
         token_authenticated.send(self, token=token)
         ctx = _app_ctx_stack.top
         ctx.authlib_server_oauth2_token = token
@@ -140,11 +114,9 @@ class JWTValidator(BearerTokenValidator, ABC):
     TOKEN_TYPE = 'bearer'
     token_cls = JWT
 
-    def __init__(self, logger, static_jwt=False, static_issuer=False, static_public_key=False, realms=None
-                 , require_token=True, role_permission_file_location=False, super_admin_role="role_super_admin",
+    def __init__(self, logger, static_issuer=False, static_public_key=False, realms=None, role_permission_file_location=False, super_admin_role="role_super_admin",
                  remote_token_validation=False, **extra_attributes):
         super().__init__(**extra_attributes)
-        self.static_jwt = static_jwt
         self.static_issuer = static_issuer
         self.static_public_key = static_public_key
         self.logger = logger
@@ -156,7 +128,6 @@ class JWTValidator(BearerTokenValidator, ABC):
             'sub': {'essential': True},
         }
         self.claims_options = claims_options
-        self.require_token = require_token
         self.role_permission_mapping = None
         self.super_admin_role = super_admin_role
         self.remote_token_validation = remote_token_validation
@@ -170,11 +141,6 @@ class JWTValidator(BearerTokenValidator, ABC):
                 logger.error("Invalid json in role_permission file: {}".format(role_permission_file_location))
 
     def authenticate_token(self, token_string):
-        if not self.require_token and self.static_jwt is not False:
-            token_string = self.static_jwt
-        elif self.require_token is True and self.static_jwt is not False and token_string != self.static_jwt:
-            return None
-
         issuer = self._get_unverified_issuer(token_string)
         if not issuer:
             return None
