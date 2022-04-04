@@ -170,6 +170,9 @@ class JWTValidator(BearerTokenValidator, ABC):
         except JoseError as error:
             self.logger.info('Authenticate token failed. %r', error)
             return None
+        except ValueError as error:
+            self.logger.info('Authenticate token failed. %r', error)
+            return None
 
     def _get_realm_config_by_issuer(self, issuer):
         if issuer == self.static_issuer:
