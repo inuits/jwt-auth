@@ -24,6 +24,13 @@ class MyResourceProtector(ResourceProtector):
         super().__init__()
         self.require_token = require_token
 
+    def check_permission(self, permission):
+        try:
+            self.acquire_token(permission)
+            return True
+        except:
+            return False
+
     def acquire_token(self, permissions=None):
         """A method to acquire current valid token with the given scope.
 
@@ -114,7 +121,8 @@ class JWTValidator(BearerTokenValidator, ABC):
     TOKEN_TYPE = 'bearer'
     token_cls = JWT
 
-    def __init__(self, logger, static_issuer=False, static_public_key=False, realms=None, role_permission_file_location=False, super_admin_role="role_super_admin",
+    def __init__(self, logger, static_issuer=False, static_public_key=False, realms=None,
+                 role_permission_file_location=False, super_admin_role="role_super_admin",
                  remote_token_validation=False, **extra_attributes):
         super().__init__(**extra_attributes)
         self.static_issuer = static_issuer
