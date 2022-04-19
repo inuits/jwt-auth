@@ -59,13 +59,13 @@ decoded:
 ```
 Without setting the static issuer and public key in the env config, the library will try to get the realm config remotely which will ofcourse not work with "my-issuer".
 As you can see in the code from this library:
-```python 
-    def _get_realm_config_by_issuer(self, issuer):
-        if issuer == self.static_issuer:
-            return {"public_key": self.static_public_key}
-        if issuer in self.realms:
-            return requests.get(issuer).json()
-        return {}
+```python
+def _get_realm_config_by_issuer(self, issuer):
+    if issuer == self.static_issuer:
+        return {"public_key": self.static_public_key}
+    if issuer in self.realms:
+        return requests.get(issuer).json()
+    return {}
 ```
 Remote validation is also not possible due to the same reason, unless the issuer is remotely/locally available
 
@@ -114,5 +114,17 @@ class ItemDetail():
     def get(self, id):
         return self.getItemById(id)
 ```
+Or inside a function:
+
+```python
+import app
+
+def do_something():
+    if app.require_oauth.check_permission("can_do_something"):
+        print("Do it")
+    else:
+        print("Don't do it")
+```
+
 
 

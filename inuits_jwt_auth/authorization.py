@@ -24,7 +24,7 @@ class MyResourceProtector(ResourceProtector):
         super().__init__()
         self.require_token = require_token
 
-    def check_permission(self, permission):
+    def check_permission(self, permission: str) -> bool:
         try:
             self.acquire_token(permission)
             return True
