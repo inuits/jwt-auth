@@ -250,7 +250,7 @@ class JWTValidator(BearerTokenValidator, ABC):
             )  # "==" needed for correct b64 padding
         except:
             return False
-        decoded = json.loads(base64.b64decode(payload.encode("utf-8")))
+        decoded = json.loads(base64.urlsafe_b64decode(payload.encode("utf-8")))
         if "iss" in decoded:
             return decoded["iss"]
         else:
