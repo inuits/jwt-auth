@@ -135,6 +135,7 @@ class JWTValidator(BearerTokenValidator, ABC):
         role_permission_file_location=False,
         super_admin_role="role_super_admin",
         remote_token_validation=False,
+        remote_public_key=False,
         **extra_attributes
     ):
         super().__init__(**extra_attributes)
@@ -152,6 +153,7 @@ class JWTValidator(BearerTokenValidator, ABC):
         self.role_permission_mapping = None
         self.super_admin_role = super_admin_role
         self.remote_token_validation = remote_token_validation
+        self.remote_public_key = remote_public_key
         if role_permission_file_location:
             try:
                 role_permission_file = open(role_permission_file_location)
@@ -216,6 +218,8 @@ class JWTValidator(BearerTokenValidator, ABC):
         if issuer == self.static_issuer:
             return {"public_key": self.static_public_key}
         if issuer in self.realms:
+            if self.remote_public_key:
+                return {"public_key": self.remote_public_key}
             return requests.get(issuer).json()
         return {}
 
