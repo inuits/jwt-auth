@@ -15,7 +15,7 @@ from authlib.oauth2.rfc6749 import MissingAuthorizationError
 from authlib.oauth2.rfc6750 import BearerTokenValidator, InvalidTokenError
 from authlib.oauth2.rfc7523 import JWTBearerToken
 from contextlib import contextmanager
-from flask import _app_ctx_stack, request as _req
+from flask import request as _req, g
 from json import JSONDecodeError
 from werkzeug.exceptions import Unauthorized, Forbidden
 
@@ -48,8 +48,7 @@ class MyResourceProtector(ResourceProtector):
         else:
             token = ""
         token_authenticated.send(self, token=token)
-        ctx = _app_ctx_stack.top
-        ctx.authlib_server_oauth2_token = token
+        g.authlib_server_oauth2_token = token
         return token
 
     @contextmanager
