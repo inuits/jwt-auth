@@ -15,7 +15,7 @@ from authlib.oauth2.rfc6749 import MissingAuthorizationError
 from authlib.oauth2.rfc6750 import BearerTokenValidator, InvalidTokenError
 from authlib.oauth2.rfc7523 import JWTBearerToken
 from contextlib import contextmanager
-from flask import request as _req, g
+from flask import request as _req, g, current_app
 from json import JSONDecodeError
 from werkzeug.exceptions import Unauthorized, Forbidden
 
@@ -29,7 +29,8 @@ class MyResourceProtector(ResourceProtector):
         try:
             self.acquire_token(permission)
             return True
-        except:
+        except Exception as error:
+            current_app.logger.info(f"Acquiring token failed {error}")
             return False
 
     def acquire_token(self, permissions=None):
