@@ -15,22 +15,24 @@ from authlib.oauth2.rfc6749 import MissingAuthorizationError
 from authlib.oauth2.rfc6750 import BearerTokenValidator, InvalidTokenError
 from authlib.oauth2.rfc7523 import JWTBearerToken
 from contextlib import contextmanager
-from flask import _app_ctx_stack, request as _req, current_app
+from flask import _app_ctx_stack, request as _req
 from json import JSONDecodeError
 from werkzeug.exceptions import Unauthorized, Forbidden
 
 
 class MyResourceProtector(ResourceProtector):
-    def __init__(self, require_token=True):
+    def __init__(self, logger, require_token=True):
         super().__init__()
         self.require_token = require_token
+        self.logger = logger
 
     def check_permission(self, permission: str) -> bool:
         try:
             self.acquire_token(permission)
             return True
         except Exception as error:
-            current_app.logger.info(f"Acquiring token failed {error}")
+            self.logger.error(f"Acquiring token failed {error}")
+            self.logger.error(f'{error.__traceback__}')
             return False
 
     def acquire_token(self, permissions=None):
@@ -41,6 +43,8 @@ class MyResourceProtector(ResourceProtector):
         """
         request = HttpRequest(_req.method, _req.full_path, _req.data, _req.headers)
         request.req = _req
+        self.logger.info(f"REQUEST {_req}")
+        self.logger.info(f"REQUEST PARAMS {_req.method} {_req.full_path} {_req.data} {_req.headers}")
         # backward compatible
         if isinstance(permissions, str):
             permissions = [permissions]
@@ -160,13 +164,13 @@ class JWTValidator(BearerTokenValidator, ABC):
                 role_permission_file = open(role_permission_file_location)
                 self.role_permission_mapping = json.load(role_permission_file)
             except IOError:
-                logger.error(
+                self.logger.error(
                     "Could not read role_permission file: {}".format(
                         role_permission_file_location
                     )
                 )
             except JSONDecodeError:
-                logger.error(
+                self.logger.error(
                     "Invalid json in role_permission file: {}".format(
                         role_permission_file_location
                     )
@@ -200,19 +204,19 @@ class JWTValidator(BearerTokenValidator, ABC):
                         headers={"Authorization": "Bearer {}".format(token_string)},
                     )
                     if result.status_code != 200:
-                        self.logger.info(
+                        self.logger.error(
                             "Authenticate token failed. %r", result.content
                         )
                         return None
                 except Exception as error:
-                    self.logger.info("Authenticate token failed. %r", error)
+                    self.logger.error("Authenticate token failed. %r", error)
                     return None
             return claims
         except JoseError as error:
-            self.logger.info("Authenticate token failed. %r", error)
+            self.logger.error("Authenticate token failed. %r", error)
             return None
         except ValueError as error:
-            self.logger.info("Authenticate token failed. %r", error)
+            self.logger.error("Authenticate token failed. %r", error)
             return None
 
     def _get_realm_config_by_issuer(self, issuer):
