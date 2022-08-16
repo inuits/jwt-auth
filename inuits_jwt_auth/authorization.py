@@ -32,7 +32,6 @@ class MyResourceProtector(ResourceProtector):
             return True
         except Exception as error:
             self.logger.error(f"Acquiring token failed {error}")
-            self.logger.error(f'{error.__traceback__}')
             return False
 
     def acquire_token(self, permissions=None):
@@ -43,8 +42,6 @@ class MyResourceProtector(ResourceProtector):
         """
         request = HttpRequest(_req.method, _req.full_path, _req.data, _req.headers)
         request.req = _req
-        self.logger.info(f"REQUEST {_req}")
-        self.logger.info(f"REQUEST PARAMS {_req.method} {_req.full_path} {_req.data} {_req.headers}")
         # backward compatible
         if isinstance(permissions, str):
             permissions = [permissions]
@@ -141,7 +138,7 @@ class JWTValidator(BearerTokenValidator, ABC):
         super_admin_role="role_super_admin",
         remote_token_validation=False,
         remote_public_key=False,
-        **extra_attributes
+        **extra_attributes,
     ):
         super().__init__(**extra_attributes)
         self.static_issuer = static_issuer
