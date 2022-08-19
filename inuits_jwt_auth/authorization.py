@@ -1,4 +1,5 @@
 import base64
+from datetime import datetime
 import functools
 import json
 import requests
@@ -138,6 +139,7 @@ class JWTValidator(BearerTokenValidator, ABC):
         super_admin_role="role_super_admin",
         remote_token_validation=False,
         remote_public_key=False,
+        realm_cache_sync_time=900,
         **extra_attributes,
     ):
         super().__init__(**extra_attributes)
@@ -156,6 +158,7 @@ class JWTValidator(BearerTokenValidator, ABC):
         self.super_admin_role = super_admin_role
         self.remote_token_validation = remote_token_validation
         self.remote_public_key = remote_public_key
+        self.realm_cache_sync_time = realm_cache_sync_time
         if role_permission_file_location:
             try:
                 role_permission_file = open(role_permission_file_location)
@@ -222,7 +225,23 @@ class JWTValidator(BearerTokenValidator, ABC):
         if issuer in self.realms:
             if self.remote_public_key:
                 return {"public_key": self.remote_public_key}
-            return requests.get(issuer).json()
+            else:
+                f = open("realm_config_cache.json", "a")
+                realm_config_cache = json.load(f)
+                current_time = datetime.timestamp(datetime.now())
+                if (
+                    issuer in realm_config_cache
+                    and (
+                        current_time - realm_config_cache[issuer]["last_sync_time"]
+                        > self.realm_cache_sync_time
+                    )
+                ) or (issuer not in realm_config_cache):
+                    upstream_realm_config = requests.get(issuer).json()
+                    upstream_realm_config["last_sync_time"] = current_time
+                    realm_config_cache[issuer] = upstream_realm_config
+                    f.write(json.dumps(realm_config_cache))
+                f.close()
+                return realm_config_cache[issuer]
         return {}
 
     def validate_token(self, token, permissions, request):

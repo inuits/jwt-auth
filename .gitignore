@@ -1,3 +1,4 @@
+inuits_jwt_auth/realm_config.json
 dist
 .idea
 *.egg-info
