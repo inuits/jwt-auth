@@ -226,8 +226,16 @@ class JWTValidator(BearerTokenValidator, ABC):
             if self.remote_public_key:
                 return {"public_key": self.remote_public_key}
             else:
-                f = open("realm_config_cache.json", "a")
+                try:
+                    f = open("realm_config_cache.json", "r")
+                except FileNotFoundError:
+                    f = open("realm_config_cache.json", "w")
+                    f.write("{}")
+                    f.close()
+                    f = open("realm_config_cache.json", "r")
+
                 realm_config_cache = json.load(f)
+                f.close()
                 current_time = datetime.timestamp(datetime.now())
                 if (
                     issuer in realm_config_cache
@@ -239,8 +247,9 @@ class JWTValidator(BearerTokenValidator, ABC):
                     upstream_realm_config = requests.get(issuer).json()
                     upstream_realm_config["last_sync_time"] = current_time
                     realm_config_cache[issuer] = upstream_realm_config
+                    f = open("realm_config_cache.json", "w")
                     f.write(json.dumps(realm_config_cache))
-                f.close()
+                    f.close()
                 return realm_config_cache[issuer]
         return {}
 
