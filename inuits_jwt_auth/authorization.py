@@ -229,10 +229,9 @@ class JWTValidator(BearerTokenValidator, ABC):
                 try:
                     f = open("realm_config_cache.json", "r")
                 except FileNotFoundError:
-                    f = open("realm_config_cache.json", "w")
+                    f = open("realm_config_cache.json", "a+")
                     f.write("{}")
-                    f.close()
-                    f = open("realm_config_cache.json", "r")
+                    f.seek(0)
 
                 realm_config_cache = json.load(f)
                 f.close()
