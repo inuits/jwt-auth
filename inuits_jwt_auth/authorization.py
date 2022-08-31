@@ -1,7 +1,6 @@
 import base64
 import functools
 import json
-import os
 import requests
 
 from abc import ABC
@@ -18,7 +17,6 @@ from authlib.oauth2.rfc7523 import JWTBearerToken
 from contextlib import contextmanager
 from datetime import datetime
 from flask import _app_ctx_stack, request as _req
-from json import JSONDecodeError
 from werkzeug.exceptions import Unauthorized, Forbidden
 
 
@@ -135,7 +133,7 @@ class JWTValidator(BearerTokenValidator, ABC):
         super_admin_role="role_super_admin",
         remote_token_validation=False,
         remote_public_key=None,
-        realm_cache_sync_time=900,
+        realm_cache_sync_time=1800,
         **extra_attributes,
     ):
         super().__init__(**extra_attributes)
@@ -155,6 +153,7 @@ class JWTValidator(BearerTokenValidator, ABC):
         self.remote_token_validation = remote_token_validation
         self.remote_public_key = remote_public_key
         self.realm_cache_sync_time = realm_cache_sync_time
+        self.realm_config_cache = {}
         if role_permission_file_location:
             try:
                 with open(role_permission_file_location, "r") as file:
@@ -163,7 +162,7 @@ class JWTValidator(BearerTokenValidator, ABC):
                 self.logger.error(
                     f"Could not read role_permission file: {role_permission_file_location}"
                 )
-            except JSONDecodeError:
+            except json.JSONDecodeError:
                 self.logger.error(
                     f"Invalid json in role_permission file: {role_permission_file_location}"
                 )
@@ -206,23 +205,16 @@ class JWTValidator(BearerTokenValidator, ABC):
             return {}
         if self.remote_public_key:
             return {"public_key": self.remote_public_key}
-        if not os.path.exists("realm_config_cache.json"):
-            with open("realm_config_cache.json", "w") as file:
-                file.write("{}")
-        with open("realm_config_cache.json", "r") as file:
-            realm_config_cache = json.load(file)
         current_time = datetime.timestamp(datetime.now())
         if (
-            issuer in realm_config_cache
-            and current_time - realm_config_cache[issuer]["last_sync_time"]
+            issuer in self.realm_config_cache
+            and current_time - self.realm_config_cache[issuer]["last_sync_time"]
             < self.realm_cache_sync_time
         ):
-            return realm_config_cache[issuer]
-        realm_config_cache[issuer] = requests.get(issuer).json()
-        realm_config_cache[issuer]["last_sync_time"] = current_time
-        with open("realm_config_cache.json", "w") as file:
-            file.write(json.dumps(realm_config_cache))
-        return realm_config_cache[issuer]
+            return self.realm_config_cache[issuer]
+        self.realm_config_cache[issuer] = requests.get(issuer).json()
+        self.realm_config_cache[issuer]["last_sync_time"] = current_time
+        return self.realm_config_cache[issuer]
 
     def validate_token(self, token, permissions, request):
         """Check if token is active and matches the requested permissions."""
