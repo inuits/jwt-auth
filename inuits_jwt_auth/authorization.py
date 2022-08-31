@@ -173,11 +173,11 @@ class JWTValidator(BearerTokenValidator, ABC):
             return None
         realm_config = self.__get_realm_config_by_issuer(issuer)
         if "public_key" in realm_config:
-            self.public_key = f"""
-                -----BEGIN PUBLIC KEY-----\n
-                {realm_config["public_key"]}\n
-                -----END PUBLIC KEY-----
-            """
+            self.public_key = (
+                "-----BEGIN PUBLIC KEY-----\n"
+                + realm_config["public_key"]
+                + "\n-----END PUBLIC KEY-----"
+            )
         try:
             claims = jwt.decode(
                 token_string,
