@@ -1,7 +1,7 @@
 import base64
-from datetime import datetime
 import functools
 import json
+import os
 import requests
 
 from abc import ABC
@@ -10,12 +10,13 @@ from authlib.integrations.flask_oauth2 import (
     token_authenticated,
     current_token as current_token_authlib,
 )
-from authlib.jose import jwt, JoseError
+from authlib.jose import jwt
 from authlib.oauth2 import HttpRequest, OAuth2Error
 from authlib.oauth2.rfc6749 import MissingAuthorizationError
-from authlib.oauth2.rfc6750 import BearerTokenValidator, InvalidTokenError
+from authlib.oauth2.rfc6750 import BearerTokenValidator
 from authlib.oauth2.rfc7523 import JWTBearerToken
 from contextlib import contextmanager
+from datetime import datetime
 from flask import _app_ctx_stack, request as _req
 from json import JSONDecodeError
 from werkzeug.exceptions import Unauthorized, Forbidden
@@ -98,29 +99,24 @@ class JWT(JWTBearerToken):
         role_permission_mapping=None,
         super_admin_role="role_super_admin",
     ):
-        if role_permission_mapping is None:
-            role_permission_mapping = []
-        if (
-            permissions is not None
-            and "azp" in self
-            and "resource_access" in self
-            and self["azp"] in self["resource_access"]
-        ):
-            resource_access = self["resource_access"][self["azp"]]
-            if "roles" in resource_access and permissions is not None:
-                user_permissions = []
-                for role in resource_access["roles"]:
-                    if role == super_admin_role:
-                        return True
-                    if role in role_permission_mapping:
-                        for permission in role_permission_mapping[role]:
-                            user_permissions.append(permission)
-                for permission in permissions:
-                    if permission in user_permissions:
-                        return True
-            elif "roles" not in resource_access and permissions is not None:
-                return False
-        elif permissions is None:
+        if not permissions:
+            return True
+        if any(x not in self for x in ["azp, resource_access"]):
+            return False
+        if self["azp"] not in self["resource_access"]:
+            return False
+        resource_access = self["resource_access"][self["azp"]]
+        if "roles" not in resource_access:
+            return False
+        if super_admin_role in resource_access["roles"]:
+            return True
+        if not role_permission_mapping:
+            return False
+        user_permissions = []
+        for role in resource_access["roles"]:
+            if role in role_permission_mapping:
+                user_permissions.extend([x for x in role_permission_mapping[role]])
+        if all(x in user_permissions for x in permissions):
             return True
         return False
 
@@ -132,13 +128,13 @@ class JWTValidator(BearerTokenValidator, ABC):
     def __init__(
         self,
         logger,
-        static_issuer=False,
-        static_public_key=False,
+        static_issuer=None,
+        static_public_key=None,
         realms=None,
-        role_permission_file_location=False,
+        role_permission_file_location=None,
         super_admin_role="role_super_admin",
         remote_token_validation=False,
-        remote_public_key=False,
+        remote_public_key=None,
         realm_cache_sync_time=900,
         **extra_attributes,
     ):
@@ -146,8 +142,8 @@ class JWTValidator(BearerTokenValidator, ABC):
         self.static_issuer = static_issuer
         self.static_public_key = static_public_key
         self.logger = logger
-        self.public_key = None
-        self.realms = [] if realms is None else realms
+        self.public_key = ""
+        self.realms = realms if realms else []
         claims_options = {
             "exp": {"essential": True},
             "azp": {"essential": True},
@@ -161,34 +157,28 @@ class JWTValidator(BearerTokenValidator, ABC):
         self.realm_cache_sync_time = realm_cache_sync_time
         if role_permission_file_location:
             try:
-                role_permission_file = open(role_permission_file_location)
-                self.role_permission_mapping = json.load(role_permission_file)
+                with open(role_permission_file_location, "r") as file:
+                    self.role_permission_mapping = json.load(file)
             except IOError:
                 self.logger.error(
-                    "Could not read role_permission file: {}".format(
-                        role_permission_file_location
-                    )
+                    f"Could not read role_permission file: {role_permission_file_location}"
                 )
             except JSONDecodeError:
                 self.logger.error(
-                    "Invalid json in role_permission file: {}".format(
-                        role_permission_file_location
-                    )
+                    f"Invalid json in role_permission file: {role_permission_file_location}"
                 )
 
     def authenticate_token(self, token_string):
-        issuer = self._get_unverified_issuer(token_string)
+        issuer = self.__get_unverified_issuer(token_string)
         if not issuer:
             return None
-        realm_config = self._get_realm_config_by_issuer(issuer)
+        realm_config = self.__get_realm_config_by_issuer(issuer)
         if "public_key" in realm_config:
-            self.public_key = (
-                "-----BEGIN PUBLIC KEY-----\n"
-                + realm_config["public_key"]
-                + "\n-----END PUBLIC KEY-----"
-            )
-        else:
-            self.public_key = ""
+            self.public_key = f"""
+                -----BEGIN PUBLIC KEY-----\n
+                {realm_config["public_key"]}\n
+                -----END PUBLIC KEY-----
+            """
         try:
             claims = jwt.decode(
                 token_string,
@@ -198,92 +188,61 @@ class JWTValidator(BearerTokenValidator, ABC):
             )
             claims.validate()
             if self.remote_token_validation:
-                try:
-                    result = requests.get(
-                        "{}/protocol/openid-connect/userinfo".format(issuer),
-                        headers={"Authorization": "Bearer {}".format(token_string)},
-                    )
-                    if result.status_code != 200:
-                        self.logger.error(
-                            "Authenticate token failed. %r", result.content
-                        )
-                        return None
-                except Exception as error:
-                    self.logger.error("Authenticate token failed. %r", error)
-                    return None
+                result = requests.get(
+                    f"{issuer}/protocol/openid-connect/userinfo",
+                    headers={"Authorization": f"Bearer {token_string}"},
+                )
+                if result.status_code != 200:
+                    raise Exception(result.content.strip())
             return claims
-        except JoseError as error:
-            self.logger.error("Authenticate token failed. %r", error)
-            return None
-        except ValueError as error:
-            self.logger.error("Authenticate token failed. %r", error)
+        except Exception as error:
+            self.logger.error(f"Authenticate token failed: {error}")
             return None
 
-    def _get_realm_config_by_issuer(self, issuer):
+    def __get_realm_config_by_issuer(self, issuer):
         if issuer == self.static_issuer:
             return {"public_key": self.static_public_key}
-        if issuer in self.realms:
-            if self.remote_public_key:
-                return {"public_key": self.remote_public_key}
-            else:
-                try:
-                    f = open("realm_config_cache.json", "r")
-                except FileNotFoundError:
-                    f = open("realm_config_cache.json", "a+")
-                    f.write("{}")
-                    f.seek(0)
-
-                realm_config_cache = json.load(f)
-                f.close()
-                current_time = datetime.timestamp(datetime.now())
-                if (
-                    issuer in realm_config_cache
-                    and (
-                        current_time - realm_config_cache[issuer]["last_sync_time"]
-                        > self.realm_cache_sync_time
-                    )
-                ) or (issuer not in realm_config_cache):
-                    upstream_realm_config = requests.get(issuer).json()
-                    upstream_realm_config["last_sync_time"] = current_time
-                    realm_config_cache[issuer] = upstream_realm_config
-                    f = open("realm_config_cache.json", "w")
-                    f.write(json.dumps(realm_config_cache))
-                    f.close()
-                return realm_config_cache[issuer]
-        return {}
+        if issuer not in self.realms:
+            return {}
+        if self.remote_public_key:
+            return {"public_key": self.remote_public_key}
+        if not os.path.exists("realm_config_cache.json"):
+            with open("realm_config_cache.json", "w") as file:
+                file.write("{}")
+        with open("realm_config_cache.json", "r") as file:
+            realm_config_cache = json.load(file)
+        current_time = datetime.timestamp(datetime.now())
+        if (
+            issuer in realm_config_cache
+            and current_time - realm_config_cache[issuer]["last_sync_time"]
+            < self.realm_cache_sync_time
+        ):
+            return realm_config_cache[issuer]
+        realm_config_cache[issuer] = requests.get(issuer).json()
+        realm_config_cache[issuer]["last_sync_time"] = current_time
+        with open("realm_config_cache.json", "w") as file:
+            file.write(json.dumps(realm_config_cache))
+        return realm_config_cache[issuer]
 
     def validate_token(self, token, permissions, request):
         """Check if token is active and matches the requested permissions."""
-        if not token:
-            raise InvalidTokenError(
-                realm=self.realm, extra_attributes=self.extra_attributes
-            )
-        if token.is_expired():
-            raise InvalidTokenError(
-                realm=self.realm, extra_attributes=self.extra_attributes
-            )
-        if token.is_revoked():
-            raise InvalidTokenError(
-                realm=self.realm, extra_attributes=self.extra_attributes
-            )
+        super().validate_token(token, None, request)
         if not token.has_permissions(
             permissions, self.role_permission_mapping, self.super_admin_role
         ):
             raise InsufficientPermissionError()
 
     @staticmethod
-    def _get_unverified_issuer(token_string):
+    def __get_unverified_issuer(token_string):
         try:
-            payload = (
-                token_string.split(".")[1] + "=="
-            )  # "==" needed for correct b64 padding
+            # Adding "=="  is necessary for correct base64 padding
+            payload = f'{token_string.split(".")[1]}=='
         except:
-            return False
+            return None
         decoded = json.loads(base64.urlsafe_b64decode(payload.encode("utf-8")))
         if "iss" in decoded:
             return decoded["iss"]
-        else:
-            return False
+        return None
 
 
 class InsufficientPermissionError(OAuth2Error):
