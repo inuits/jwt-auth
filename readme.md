@@ -60,7 +60,7 @@ decoded:
 Without setting the static issuer and public key in the env config, the library will try to get the realm config remotely which will ofcourse not work with "my-issuer".
 As you can see in the code from this library:
 ```python
-def _get_realm_config_by_issuer(self, issuer):
+def __get_realm_config_by_issuer(self, issuer):
     if issuer == self.static_issuer:
         return {"public_key": self.static_public_key}
     if issuer in self.realms:
