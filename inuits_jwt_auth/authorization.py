@@ -1,7 +1,6 @@
 import base64
 import functools
 import json
-import logging
 import requests
 
 from abc import ABC
@@ -92,15 +91,6 @@ class MyResourceProtector(ResourceProtector):
 
 
 class JWT(JWTBearerToken):
-    def __init__(self, payload, header, options=None, params=None):
-        super().__init__(payload, header, options, params)
-        logging.basicConfig(
-            format="%(asctime)s %(process)d,%(threadName)s %(filename)s:%(lineno)d [%(levelname)s] %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-            level=logging.INFO,
-        )
-        self.logger = logging.getLogger(__name__)
-
     def has_permissions(
         self,
         permissions,
@@ -108,36 +98,24 @@ class JWT(JWTBearerToken):
         super_admin_role="role_super_admin",
     ):
         if not permissions:
-            self.logger.info("NO PERMISSIONS REQUESTED")
             return True
         if any(x not in self for x in ["azp", "resource_access"]):
-            self.logger.info(f'AZP NOT IN SELF: {"azp" not in self}')
-            self.logger.info(f'R_A NOT IN SELF: {"resource_access" not in self}')
             return False
         if self["azp"] not in self["resource_access"]:
-            self.logger.info("AZP NOT IN R_A")
             return False
         resource_access = self["resource_access"][self["azp"]]
         if "roles" not in resource_access:
-            self.logger.info("NO ROLES IN R_A")
             return False
         if super_admin_role in resource_access["roles"]:
-            self.logger.info("IS SUPER ADMIN")
             return True
         if not role_permission_mapping:
-            self.logger.info("NO ROLE MAPPING")
             return False
         user_permissions = []
         for role in resource_access["roles"]:
-            self.logger.info(f"ROLE: {role}")
             if role in role_permission_mapping:
-                self.logger.info(f"{role} IS IN MAPPING")
                 user_permissions.extend([x for x in role_permission_mapping[role]])
-        self.logger.info(f"USER HAS PERMISSIONS: {user_permissions}")
-        if all(x in user_permissions for x in permissions):
-            self.logger.info("USER HAS ALL REQUESTED PERMISSIONS")
+        if any(x in user_permissions for x in permissions):
             return True
-        self.logger.info(f"REQUESTED PERMISSIONS {permissions} ARE NOT ALL IN USER PERMISSIONS {user_permissions}")
         return False
 
 
