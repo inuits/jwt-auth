@@ -35,20 +35,13 @@ class MyResourceProtector(ResourceProtector):
             return False
 
     def acquire_token(self, permissions=None):
-        """A method to acquire current valid token with the given scope.
-
-        :param permissions: a list of required permissions
-        :return: token object
-        """
         request = HttpRequest(_req.method, _req.full_path, _req.data, _req.headers)
         request.req = _req
-        # backward compatible
         if isinstance(permissions, str):
             permissions = [permissions]
+        token = ""
         if self.require_token:
             token = self.validate_request(permissions, request)
-        else:
-            token = ""
         token_authenticated.send(self, token=token)
         ctx = _app_ctx_stack.top
         ctx.authlib_server_oauth2_token = token
@@ -82,7 +75,6 @@ class MyResourceProtector(ResourceProtector):
         return wrapper
 
     def validate_request(self, permissions, request):
-        """Validate the request and return a token."""
         validator, token_string = self.parse_request_authorization(request)
         validator.validate_request(request)
         token = validator.authenticate_token(token_string)
@@ -140,14 +132,12 @@ class JWTValidator(BearerTokenValidator, ABC):
         self.static_issuer = static_issuer
         self.static_public_key = static_public_key
         self.logger = logger
-        self.public_key = ""
         self.realms = realms if realms else []
-        claims_options = {
+        self.claims_options = {
             "exp": {"essential": True},
             "azp": {"essential": True},
             "sub": {"essential": True},
         }
-        self.claims_options = claims_options
         self.role_permission_mapping = None
         self.super_admin_role = super_admin_role
         self.remote_token_validation = remote_token_validation
@@ -172,16 +162,13 @@ class JWTValidator(BearerTokenValidator, ABC):
         if not issuer:
             return None
         realm_config = self.__get_realm_config_by_issuer(issuer)
+        public_key = ""
         if "public_key" in realm_config:
-            self.public_key = (
-                "-----BEGIN PUBLIC KEY-----\n"
-                + realm_config["public_key"]
-                + "\n-----END PUBLIC KEY-----"
-            )
+            public_key = f'-----BEGIN PUBLIC KEY-----\n{realm_config["public_key"]}\n-----END PUBLIC KEY-----'
         try:
             claims = jwt.decode(
                 token_string,
-                self.public_key,
+                public_key,
                 claims_options=self.claims_options,
                 claims_cls=self.token_cls,
             )
@@ -217,7 +204,6 @@ class JWTValidator(BearerTokenValidator, ABC):
         return self.realm_config_cache[issuer]
 
     def validate_token(self, token, permissions, request):
-        """Check if token is active and matches the requested permissions."""
         super().validate_token(token, None, request)
         if not token.has_permissions(
             permissions, self.role_permission_mapping, self.super_admin_role
@@ -238,15 +224,6 @@ class JWTValidator(BearerTokenValidator, ABC):
 
 
 class InsufficientPermissionError(OAuth2Error):
-    """The request requires higher privileges than provided by the
-    access token. The resource server SHOULD respond with the HTTP
-    403 (Forbidden) status code and MAY include the "scope"
-    attribute with the scope necessary to access the protected
-    resource.
-
-    https://tools.ietf.org/html/rfc6750#section-3.1
-    """
-
     error = "insufficient_permission"
     description = (
         "The request requires higher privileges than provided by the access token."
