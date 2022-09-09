@@ -34,6 +34,16 @@ class MyResourceProtector(ResourceProtector):
             self.logger.error(f"Acquiring token failed {error}")
             return False
 
+    def is_super_admin(self):
+        if token := self.acquire_token():
+            return token.is_super_admin()
+        return False
+
+    def get_token_permissions(self, role_permission_mapping):
+        if token := self.acquire_token():
+            return token.get_token_permissions(role_permission_mapping)
+        return []
+
     def acquire_token(self, permissions=None):
         request = HttpRequest(_req.method, _req.full_path, _req.data, _req.headers)
         request.req = _req
@@ -83,6 +93,25 @@ class MyResourceProtector(ResourceProtector):
 
 
 class JWT(JWTBearerToken):
+    def __get_roles(self):
+        if any(x not in self for x in ["azp", "resource_access"]):
+            return []
+        if self["azp"] not in self["resource_access"]:
+            return []
+        if "roles" not in self["resource_access"][self["azp"]]:
+            return []
+        return self["resource_access"][self["azp"]]["roles"]
+
+    def get_token_permissions(self, role_permission_mapping):
+        permissions = []
+        roles = self.__get_roles()
+        if not role_permission_mapping or not roles:
+            return permissions
+        for role in roles:
+            if role in role_permission_mapping:
+                permissions.extend([x for x in role_permission_mapping[role]])
+        return permissions
+
     def has_permissions(
         self,
         permissions,
@@ -91,24 +120,17 @@ class JWT(JWTBearerToken):
     ):
         if not permissions:
             return True
-        if any(x not in self for x in ["azp", "resource_access"]):
-            return False
-        if self["azp"] not in self["resource_access"]:
-            return False
-        resource_access = self["resource_access"][self["azp"]]
-        if "roles" not in resource_access:
-            return False
-        if super_admin_role in resource_access["roles"]:
+        if self.is_super_admin(super_admin_role):
             return True
         if not role_permission_mapping:
             return False
-        user_permissions = []
-        for role in resource_access["roles"]:
-            if role in role_permission_mapping:
-                user_permissions.extend([x for x in role_permission_mapping[role]])
+        user_permissions = self.get_token_permissions(role_permission_mapping)
         if any(x in user_permissions for x in permissions):
             return True
         return False
+
+    def is_super_admin(self, super_admin_role="role_super_admin"):
+        return super_admin_role in self.__get_roles()
 
 
 class JWTValidator(BearerTokenValidator, ABC):

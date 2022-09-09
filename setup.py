@@ -2,7 +2,7 @@ from distutils.core import setup
 
 setup(
     name="inuits_jwt_auth",
-    version="0.1.0",
+    version="0.2.0",
     description="A Wrapper for authlib library with roles and permissions",
     classifiers=[
         "License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
