@@ -23,8 +23,8 @@ from werkzeug.exceptions import Unauthorized, Forbidden
 class MyResourceProtector(ResourceProtector):
     def __init__(self, logger, require_token=True):
         super().__init__()
-        self.require_token = require_token
         self.logger = logger
+        self.require_token = require_token
 
     def check_permission(self, permission: str) -> bool:
         try:
@@ -107,9 +107,13 @@ class JWT(JWTBearerToken):
         roles = self.__get_roles()
         if not role_permission_mapping or not roles:
             return permissions
+        if self.is_super_admin():
+            for role in role_permission_mapping:
+                permissions.extend(role_permission_mapping[role])
+            return permissions
         for role in roles:
             if role in role_permission_mapping:
-                permissions.extend([x for x in role_permission_mapping[role]])
+                permissions.extend(role_permission_mapping[role])
         return permissions
 
     def has_permissions(

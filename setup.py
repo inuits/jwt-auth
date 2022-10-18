@@ -1,23 +1,23 @@
 from distutils.core import setup
 
 setup(
-    name="inuits_jwt_auth",
-    version="0.3.0",
-    description="A Wrapper for authlib library with roles and permissions",
+    author="Inuits",
+    author_email="developers@inuits.eu",
     classifiers=[
         "License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
         "Intended Audience :: Developers",
         "Programming Language :: Python :: 3",
     ],
-    author="Matthias Dillen",
-    author_email="matthias.dillen@inuits.eu",
-    license="GPLv2",
-    packages=["inuits_jwt_auth"],
+    description="A small library to handle JWT auth including roles and permissions",
     install_requires=[
         "requests>=2.25.0",
         "Authlib>=1.0.0",
         "Flask>=1.1.2",
         "Werkzeug>=1.0.1",
     ],
+    license="GPLv2",
+    name="inuits_jwt_auth",
+    packages=["inuits_jwt_auth"],
     provides=["inuits_jwt_auth"],
+    version="1.0",
 )
