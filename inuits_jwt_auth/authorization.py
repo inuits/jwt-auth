@@ -27,8 +27,11 @@ class MyResourceProtector(ResourceProtector):
         self.require_token = require_token
 
     def check_permission(self, permission: str) -> bool:
+        return self.check_permissions([permission])
+
+    def check_permissions(self, permissions: list) -> bool:
         try:
-            self.acquire_token(permission)
+            self.acquire_token(permissions)
             return True
         except Exception as error:
             self.logger.error(f"Acquiring token failed {error}")
@@ -47,8 +50,6 @@ class MyResourceProtector(ResourceProtector):
     def acquire_token(self, permissions=None):
         request = HttpRequest(_req.method, _req.full_path, _req.data, _req.headers)
         request.req = _req
-        if isinstance(permissions, str):
-            permissions = [permissions]
         token = ""
         if self.require_token:
             token = self.validate_request(permissions, request)
