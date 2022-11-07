@@ -26,10 +26,10 @@ class MyResourceProtector(ResourceProtector):
         self.logger = logger
         self.require_token = require_token
 
-    def check_permission(self, permission: str) -> bool:
+    def check_permission(self, permission):
         return self.check_permissions([permission])
 
-    def check_permissions(self, permissions: list) -> bool:
+    def check_permissions(self, permissions):
         try:
             self.acquire_token(permissions)
             return True
@@ -50,6 +50,8 @@ class MyResourceProtector(ResourceProtector):
     def acquire_token(self, permissions=None):
         request = HttpRequest(_req.method, _req.full_path, _req.data, _req.headers)
         request.req = _req
+        if isinstance(permissions, str):
+            permissions = [permissions]
         token = ""
         if self.require_token:
             token = self.validate_request(permissions, request)
