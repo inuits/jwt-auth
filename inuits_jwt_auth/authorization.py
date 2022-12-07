@@ -6,17 +6,15 @@ import requests
 from abc import ABC
 from authlib.integrations.flask_oauth2 import (
     ResourceProtector,
-    token_authenticated,
     current_token as current_token_authlib,
 )
 from authlib.jose import jwt
-from authlib.oauth2 import HttpRequest, OAuth2Error
+from authlib.oauth2 import OAuth2Error
 from authlib.oauth2.rfc6749 import MissingAuthorizationError
 from authlib.oauth2.rfc6750 import BearerTokenValidator
 from authlib.oauth2.rfc7523 import JWTBearerToken
 from contextlib import contextmanager
 from datetime import datetime
-from flask import _app_ctx_stack, request as _req
 from werkzeug.exceptions import Unauthorized, Forbidden
 
 
@@ -47,18 +45,11 @@ class MyResourceProtector(ResourceProtector):
             return token.get_token_permissions(role_permission_mapping)
         return []
 
+    # permissions are passed as scopes, it will end up in JWTValidator.validate_token anyway
     def acquire_token(self, permissions=None):
-        request = HttpRequest(_req.method, _req.full_path, _req.data, _req.headers)
-        request.req = _req
-        if isinstance(permissions, str):
-            permissions = [permissions]
-        token = ""
-        if self.require_token:
-            token = self.validate_request(permissions, request)
-        token_authenticated.send(self, token=token)
-        ctx = _app_ctx_stack.top
-        ctx.authlib_server_oauth2_token = token
-        return token
+        if not self.require_token:
+            return ""
+        return super().acquire_token(permissions)
 
     @contextmanager
     def acquire(self, permissions=None):
@@ -87,12 +78,9 @@ class MyResourceProtector(ResourceProtector):
 
         return wrapper
 
+    # permissions are passed as scopes, it will end up in JWTValidator.validate_token anyway
     def validate_request(self, permissions, request):
-        validator, token_string = self.parse_request_authorization(request)
-        validator.validate_request(request)
-        token = validator.authenticate_token(token_string)
-        validator.validate_token(token, permissions, request)
-        return token
+        return super().validate_request(permissions, request)
 
 
 class JWT(JWTBearerToken):
