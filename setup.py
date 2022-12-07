@@ -19,5 +19,5 @@ setup(
     name="inuits_jwt_auth",
     packages=["inuits_jwt_auth"],
     provides=["inuits_jwt_auth"],
-    version="2.0",
+    version="2.0.1",
 )

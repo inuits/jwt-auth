@@ -47,8 +47,6 @@ class MyResourceProtector(ResourceProtector):
 
     # permissions are passed as scopes, it will end up in JWTValidator.validate_token anyway
     def acquire_token(self, permissions=None):
-        if not self.require_token:
-            return ""
         return super().acquire_token(permissions)
 
     @contextmanager
@@ -80,6 +78,8 @@ class MyResourceProtector(ResourceProtector):
 
     # permissions are passed as scopes, it will end up in JWTValidator.validate_token anyway
     def validate_request(self, permissions, request):
+        if not self.require_token:
+            return {}
         return super().validate_request(permissions, request)
 
 
